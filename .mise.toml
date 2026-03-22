@@ -1,0 +1,8 @@
+[tools]
+1password = "latest"
+bun = "latest"
+node = "22"
+rust = "stable"
+
+[env]
+SNIPX_SEED = "0"
