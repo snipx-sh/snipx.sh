@@ -1,5 +1,5 @@
 // rusqlite schema and migrations
-// The API (Bun + Hono) is the primary database owner.
+// The API (Bun + ElysiaJS) is the primary database owner.
 // This module provides read-only access for Tauri-side operations
 // when the API is not available (future offline support).
 

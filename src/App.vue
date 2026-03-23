@@ -17,12 +17,12 @@ import GhostEditor from "./components/learn/GhostEditor.vue"
 import SpeedBar from "./components/learn/SpeedBar.vue"
 import OutputPanel from "./components/learn/OutputPanel.vue"
 import AskPanel from "./components/learn/AskPanel.vue"
-import TaskList from "./components/learn/TaskList.vue"
 import { useSnippetsStore } from "./stores/snippets"
 import { useDocsStore } from "./stores/docs"
 import { useBookmarksStore } from "./stores/bookmarks"
 import { useLearnStore } from "./stores/learn"
 import { chapters } from "./data/lessons"
+import type { CreateSnippet, CreateDoc, CreateBookmark } from "./lib/types"
 
 type Mode = "snippets" | "docs" | "bookmarks" | "learn"
 
@@ -32,6 +32,11 @@ const showAdd = ref(false)
 const showRepl = ref(false)
 const showOutput = ref(false)
 const showAsk = ref(false)
+const layoutHeight = ref(window.innerHeight)
+
+window.addEventListener("resize", () => {
+  layoutHeight.value = window.innerHeight
+})
 
 const snippetsStore = useSnippetsStore()
 const docsStore = useDocsStore()
@@ -107,24 +112,16 @@ const onCopy = async (code: string) => {
 }
 
 const onToggleFav = async (id: string, fav: boolean) => {
-  const endpoint = mode.value === "learn" ? null : `http://localhost:7878/api/v1/${mode.value}/${id}`
-  if (!endpoint) return
-  await fetch(endpoint, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fav: !fav }),
-  })
-  if (activeStore.value) activeStore.value.fetchAll()
+  if (mode.value === "snippets") await snippetsStore.toggleFav(id, fav)
+  else if (mode.value === "docs") await docsStore.toggleFav(id, fav)
+  else if (mode.value === "bookmarks") await bookmarksStore.toggleFav(id, fav)
 }
 
 const onAddSubmit = async (data: Record<string, unknown>) => {
-  await fetch(`http://localhost:7878/api/v1/${mode.value}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  })
+  if (mode.value === "snippets") await snippetsStore.add(data as CreateSnippet)
+  else if (mode.value === "docs") await docsStore.add(data as CreateDoc)
+  else if (mode.value === "bookmarks") await bookmarksStore.add(data as CreateBookmark)
   showAdd.value = false
-  if (activeStore.value) activeStore.value.fetchAll()
 }
 
 const onReplNavigate = (navMode: "snippets" | "docs" | "bookmarks", id: string) => {
@@ -138,7 +135,7 @@ const itemCount = computed(() => activeStore.value?.items.length ?? 0)
 </script>
 
 <template>
-  <div :style="{ height: '100vh', background: T.bg, color: T.fg, display: 'flex', flexDirection: 'column', overflow: 'hidden' }">
+  <div :style="{ height: layoutHeight + 'px', background: T.bg, color: T.fg, display: 'flex', flexDirection: 'column', overflow: 'hidden' }">
     <AppHeader
       :mode="mode"
       :search-query="searchQuery"
@@ -168,7 +165,7 @@ const itemCount = computed(() => activeStore.value?.items.length ?? 0)
           :current-chapter-id="learnStore.currentChapterId"
           :current-lesson-id="learnStore.currentLessonId"
           :completed-lessons="learnStore.completedLessons"
-          @select-lesson="learnStore.selectLesson($event[0] ?? $event, $event[1] ?? '')"
+          @select-lesson="(chapterId, lessonId) => learnStore.selectLesson(chapterId, lessonId)"
         />
       </div>
 

@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { ref, nextTick } from "vue"
 import { T } from "../lib/theme"
+import { client, getById } from "../lib/client"
+import { useSnippetsStore } from "../stores/snippets"
+import { useDocsStore } from "../stores/docs"
+import { useBookmarksStore } from "../stores/bookmarks"
+import type { Snippet, Doc, Bookmark, SearchResult, TagCount } from "../lib/types"
 
 const props = defineProps<{
   visible: boolean
@@ -17,6 +22,10 @@ const inputHistory = ref<string[]>([])
 const historyIdx = ref(-1)
 const isDragging = ref(false)
 const outputEl = ref<HTMLDivElement | null>(null)
+
+const snippetsStore = useSnippetsStore()
+const docsStore = useDocsStore()
+const bookmarksStore = useBookmarksStore()
 
 async function execute() {
   const cmd = input.value.trim()
@@ -36,29 +45,26 @@ async function execute() {
     switch (command) {
       case "help":
         output =
-          "Commands: help, list, docs, bookmarks, show <id>, search <query>, copy <id>, fav <id>, run <id>, open <id>, tags, clear"
+          "Commands: help, list, docs, bookmarks, show <id>, search <query>, copy <id>, fav <id>, open <id>, tags, clear"
         break
       case "list": {
-        const res = await fetch("http://localhost:7878/api/v1/snippets")
-        const items = await res.json()
-        output = items
-          .map((s: Record<string, string>) => `${s.id.padEnd(14)} ${s.title.padEnd(40)} ${s.lang}`)
+        await snippetsStore.fetchAll()
+        output = snippetsStore.items
+          .map((s: Snippet) => `${s.id.padEnd(14)} ${s.title.padEnd(40)} ${s.lang}`)
           .join("\n")
         break
       }
       case "docs": {
-        const res = await fetch("http://localhost:7878/api/v1/docs")
-        const items = await res.json()
-        output = items
-          .map((d: Record<string, string>) => `${d.id.padEnd(14)} ${d.title.padEnd(40)} ${d.lang}`)
+        await docsStore.fetchAll()
+        output = docsStore.items
+          .map((d: Doc) => `${d.id.padEnd(14)} ${d.title.padEnd(40)} ${d.lang}`)
           .join("\n")
         break
       }
       case "bookmarks": {
-        const res = await fetch("http://localhost:7878/api/v1/bookmarks")
-        const items = await res.json()
-        output = items
-          .map((b: Record<string, string>) => `${b.id.padEnd(14)} ${b.title.padEnd(40)} ${b.cat}`)
+        await bookmarksStore.fetchAll()
+        output = bookmarksStore.items
+          .map((b: Bookmark) => `${b.id.padEnd(14)} ${b.title.padEnd(40)} ${b.cat}`)
           .join("\n")
         break
       }
@@ -69,10 +75,11 @@ async function execute() {
           isError = true
           break
         }
-        const res = await fetch(`http://localhost:7878/api/v1/search?q=${encodeURIComponent(q)}`)
-        const items = await res.json()
-        output = items
-          .map((r: Record<string, string>) => `[${r.type}] ${r.id.padEnd(14)} ${r.title}`)
+        const { data, error: fetchError } = await client.api.v1.search.get({ query: { q } })
+        if (fetchError) throw new Error(String(fetchError))
+        const results = (data as SearchResult[]) ?? []
+        output = results
+          .map((r: SearchResult) => `[${r.type}] ${r.id.padEnd(14)} ${r.title}`)
           .join("\n")
         break
       }
@@ -83,27 +90,103 @@ async function execute() {
           isError = true
           break
         }
-        let found = false
-        for (const type of ["snippets", "docs", "bookmarks"] as const) {
-          const res = await fetch(`http://localhost:7878/api/v1/${type}/${id}`)
-          if (res.ok) {
-            emit("navigate", type, id)
-            output = `Navigating to ${type}/${id}`
-            found = true
-            break
+        const snipRes = await getById(client.api.v1.snippets, id)
+        if (!snipRes.error) {
+          emit("navigate", "snippets", id)
+          output = `Navigating to snippets/${id}`
+          break
+        }
+        const docRes = await getById(client.api.v1.docs, id)
+        if (!docRes.error) {
+          emit("navigate", "docs", id)
+          output = `Navigating to docs/${id}`
+          break
+        }
+        const bmRes = await getById(client.api.v1.bookmarks, id)
+        if (!bmRes.error) {
+          emit("navigate", "bookmarks", id)
+          output = `Navigating to bookmarks/${id}`
+          break
+        }
+        output = `Not found: ${id}`
+        isError = true
+        break
+      }
+      case "copy": {
+        const id = args[0]
+        if (!id) {
+          output = "Usage: copy <id>"
+          isError = true
+          break
+        }
+        const snippet = snippetsStore.items.find((s: Snippet) => s.id === id)
+        if (snippet) {
+          await navigator.clipboard.writeText(snippet.code)
+          output = `Copied code from snippet "${snippet.title}"`
+        } else {
+          const doc = docsStore.items.find((d: Doc) => d.id === id)
+          const bm = bookmarksStore.items.find((b: Bookmark) => b.id === id)
+          const item = doc ?? bm
+          if (item) {
+            await navigator.clipboard.writeText(item.url)
+            output = `Copied URL from "${item.title}"`
+          } else {
+            output = `Not found: ${id}`
+            isError = true
           }
         }
-        if (!found) {
+        break
+      }
+      case "fav": {
+        const id = args[0]
+        if (!id) {
+          output = "Usage: fav <id>"
+          isError = true
+          break
+        }
+        const snippet = snippetsStore.items.find((s: Snippet) => s.id === id)
+        const doc = docsStore.items.find((d: Doc) => d.id === id)
+        const bm = bookmarksStore.items.find((b: Bookmark) => b.id === id)
+        if (snippet) {
+          await snippetsStore.toggleFav(id, snippet.fav)
+          output = `Toggled favorite for snippet "${snippet.title}"`
+        } else if (doc) {
+          await docsStore.toggleFav(id, doc.fav)
+          output = `Toggled favorite for doc "${doc.title}"`
+        } else if (bm) {
+          await bookmarksStore.toggleFav(id, bm.fav)
+          output = `Toggled favorite for bookmark "${bm.title}"`
+        } else {
           output = `Not found: ${id}`
           isError = true
         }
         break
       }
+      case "open": {
+        const id = args[0]
+        if (!id) {
+          output = "Usage: open <id>"
+          isError = true
+          break
+        }
+        const doc = docsStore.items.find((d: Doc) => d.id === id)
+        const bm = bookmarksStore.items.find((b: Bookmark) => b.id === id)
+        const item = doc ?? bm
+        if (item) {
+          window.open(item.url, "_blank")
+          output = `Opened "${item.title}" in browser`
+        } else {
+          output = `Not found or not a URL item: ${id}`
+          isError = true
+        }
+        break
+      }
       case "tags": {
-        const res = await fetch("http://localhost:7878/api/v1/tags")
-        const tags = await res.json()
+        const { data, error: fetchError } = await client.api.v1.tags.get()
+        if (fetchError) throw new Error(String(fetchError))
+        const tags = (data as TagCount[]) ?? []
         output = tags
-          .map((t: Record<string, string | number>) => `${String(t.tag).padEnd(20)} ${t.count}`)
+          .map((t: TagCount) => `${String(t.tag).padEnd(20)} ${t.count}`)
           .join("\n")
         break
       }

@@ -1,6 +1,7 @@
 import { defineStore } from "pinia"
 import { ref, computed } from "vue"
-import type { Doc } from "../lib/types"
+import type { Doc, CreateDoc } from "../lib/types"
+import { client, patchById } from "../lib/client"
 
 export const useDocsStore = defineStore("docs", () => {
   const items = ref<Doc[]>([])
@@ -55,13 +56,24 @@ export const useDocsStore = defineStore("docs", () => {
     isLoading.value = true
     error.value = null
     try {
-      const res = await fetch("http://localhost:7878/api/v1/docs")
-      items.value = await res.json()
+      const { data, error: fetchError } = await client.api.v1.docs.get()
+      if (fetchError) throw new Error(String(fetchError))
+      items.value = (data as Doc[]) ?? []
     } catch (e) {
       error.value = e instanceof Error ? e.message : "Failed to fetch"
     } finally {
       isLoading.value = false
     }
+  }
+
+  const add = async (data: CreateDoc) => {
+    await client.api.v1.docs.post({ body: data })
+    await fetchAll()
+  }
+
+  const toggleFav = async (id: string, fav: boolean) => {
+    await patchById(client.api.v1.docs, id, { fav: !fav })
+    await fetchAll()
   }
 
   return {
@@ -77,5 +89,7 @@ export const useDocsStore = defineStore("docs", () => {
     topics,
     filtered,
     fetchAll,
+    add,
+    toggleFav,
   }
 })
