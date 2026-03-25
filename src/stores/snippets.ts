@@ -1,6 +1,7 @@
 import { defineStore } from "pinia"
 import { ref, computed } from "vue"
-import type { Snippet } from "../lib/types"
+import type { Snippet, CreateSnippet } from "../lib/types"
+import { client, patchById } from "../lib/client"
 
 export const useSnippetsStore = defineStore("snippets", () => {
   const items = ref<Snippet[]>([])
@@ -39,12 +40,39 @@ export const useSnippetsStore = defineStore("snippets", () => {
     isLoading.value = true
     error.value = null
     try {
-      const res = await fetch("http://localhost:7878/api/v1/snippets")
-      items.value = await res.json()
+      const { data, error: fetchError } = await client.api.v1.snippets.get()
+      if (fetchError) throw new Error(String(fetchError))
+      items.value = (data as Snippet[]) ?? []
     } catch (e) {
       error.value = e instanceof Error ? e.message : "Failed to fetch"
     } finally {
       isLoading.value = false
+    }
+  }
+
+  const add = async (data: CreateSnippet) => {
+    error.value = null
+    try {
+      const { error: addError } = await client.api.v1.snippets.post({ body: data })
+      if (addError) {
+        throw new Error(String(addError))
+      }
+      await fetchAll()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "Failed to add snippet"
+    }
+  }
+
+  const toggleFav = async (id: string, fav: boolean) => {
+    error.value = null
+    try {
+      const { error: toggleError } = await patchById(client.api.v1.snippets, id, { fav: !fav })
+      if (toggleError) {
+        throw new Error(String(toggleError))
+      }
+      await fetchAll()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "Failed to toggle favorite"
     }
   }
 
@@ -59,5 +87,7 @@ export const useSnippetsStore = defineStore("snippets", () => {
     categories,
     filtered,
     fetchAll,
+    add,
+    toggleFav,
   }
 })

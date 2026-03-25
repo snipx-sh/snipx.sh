@@ -155,8 +155,206 @@ export async function readNuon(
 ): Promise<Record<string, unknown>> {
   const content = await readFile(filePath, "utf-8")
   try {
-    return JSON.parse(content.replace(/(\w+):/g, '"$1":').replace(/\n/g, " "))
+    const value = parseNuon(content)
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      return value as Record<string, unknown>
+    }
+    return { raw: content }
   } catch {
     return { raw: content }
   }
+}
+
+export function parseNuon(input: string): unknown {
+  let pos = 0
+
+  function skip() {
+    while (pos < input.length && /\s/.test(input[pos]!)) pos++
+  }
+
+  function parseValue(): unknown {
+    skip()
+    if (pos >= input.length) throw new Error("Unexpected end of input")
+    const ch = input[pos]!
+    if (ch === "{") return parseObject()
+    if (ch === "[") return parseArray()
+    if (ch === '"') return parseString()
+    if (input.startsWith("null", pos)) {
+      pos += 4
+      return null
+    }
+    if (input.startsWith("true", pos)) {
+      pos += 4
+      return true
+    }
+    if (input.startsWith("false", pos)) {
+      pos += 5
+      return false
+    }
+    if (/[-\d]/.test(ch)) return parseNumber()
+    throw new Error(`Unexpected character at position ${pos}: ${ch}`)
+  }
+
+  function parseObject(): Record<string, unknown> {
+    pos++
+    const obj = Object.create(null) as Record<string, unknown>
+    skip()
+    while (pos < input.length && input[pos] !== "}") {
+      skip()
+      if (input[pos] === "}") break
+      if (pos >= input.length) throw new Error("Unexpected end of input while parsing object: expected '}'")
+      let key: string
+      if (input[pos] === '"') {
+        key = parseString()
+      } else {
+        const start = pos
+        while (pos < input.length && /[\w-]/.test(input[pos]!)) pos++
+        key = input.slice(start, pos)
+      }
+      if (key === "") throw new Error(`Empty key at position ${pos}`)
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
+        throw new Error(`Disallowed key in NUON object: "${key}"`)
+      }
+      skip()
+      if (input[pos] !== ":") throw new Error(`Expected : after key "${key}"`)
+      pos++
+      skip()
+      obj[key] = parseValue()
+      skip()
+      if (input[pos] === ",") pos++
+      skip()
+    }
+    if (pos >= input.length) throw new Error("Unexpected end of input while parsing object: expected '}'")
+    pos++
+    return obj
+  }
+
+  function parseArray(): unknown[] {
+    pos++
+    const arr: unknown[] = []
+    skip()
+    while (pos < input.length && input[pos] !== "]") {
+      skip()
+      if (input[pos] === "]") break
+      if (pos >= input.length) throw new Error("Unexpected end of input while parsing array: expected ']'")
+      arr.push(parseValue())
+      skip()
+      if (input[pos] === ",") pos++
+      skip()
+    }
+    if (pos >= input.length) throw new Error("Unexpected end of input while parsing array: expected ']'")
+    pos++
+    return arr
+  }
+
+  function parseString(): string {
+    pos++
+    let str = ""
+    while (pos < input.length && input[pos] !== '"') {
+      if (input[pos] === "\\") {
+        pos++
+        if (pos >= input.length) throw new Error("Unexpected end of input: incomplete escape sequence in string")
+        const esc = input[pos]!
+        if (esc === "n") str += "\n"
+        else if (esc === "t") str += "\t"
+        else if (esc === "r") str += "\r"
+        else if (esc === '"') str += '"'
+        else if (esc === "\\") str += "\\"
+        else str += esc
+      } else {
+        str += input[pos]!
+      }
+      pos++
+    }
+    if (pos >= input.length) throw new Error("Unterminated string: expected closing '\"'")
+    pos++
+    return str
+  }
+
+  function parseNumber(): number {
+    const start = pos
+    let hasDigit = false
+    let dotCount = 0
+    if (input[pos] === "-") pos++
+    while (pos < input.length && /[\d.]/.test(input[pos]!)) {
+      const ch = input[pos]!
+      if (ch === ".") {
+        dotCount++
+        if (dotCount > 1) throw new Error(`Invalid number at position ${start}: multiple decimal points`)
+      } else {
+        hasDigit = true
+      }
+      pos++
+    }
+    if (!hasDigit) throw new Error(`Invalid number at position ${start}: no digits found`)
+    const num = Number(input.slice(start, pos))
+    if (Number.isNaN(num)) throw new Error(`Invalid number at position ${start}`)
+    return num
+  }
+
+  skip()
+  const result = parseValue()
+  skip()
+  if (pos !== input.length) throw new Error(`Unexpected trailing characters in NUON input at position ${pos}`)
+  return result
+}
+
+function formatNuonNumber(n: number): string {
+  if (!Number.isFinite(n)) {
+    throw new Error(`Cannot serialize non-finite number (${n}) in NUON`)
+  }
+  const str = n.toString()
+  if (!/[eE]/.test(str)) return str
+  // Expand scientific notation (e.g. "1e-7") into a plain decimal string.
+  // Number.prototype.toString() always produces exactly one exponent separator.
+  const parts = str.split(/[eE]/)
+  if (parts.length !== 2) throw new Error(`Unexpected number format: ${str}`)
+  const [mantissaPart, exponentPart] = parts as [string, string]
+  const exp = Number.parseInt(exponentPart, 10)
+  let sign = ""
+  let mantissa = mantissaPart
+  if (mantissa[0] === "-") {
+    sign = "-"
+    mantissa = mantissa.slice(1)
+  }
+  const [intPart, fracPart = ""] = mantissa.split(".")
+  const digits = intPart + fracPart
+  if (exp >= 0) {
+    const zerosToAdd = exp - fracPart.length
+    if (zerosToAdd >= 0) return sign + digits + "0".repeat(zerosToAdd)
+    const splitAt = intPart.length + exp
+    return sign + digits.slice(0, splitAt) + "." + digits.slice(splitAt)
+  }
+  const shift = -exp
+  return sign + "0." + "0".repeat(shift - 1) + digits
+}
+
+export function writeNuon(value: unknown, indent = 0): string {
+  const pad = "  ".repeat(indent)
+  const childPad = "  ".repeat(indent + 1)
+
+  if (value === null) return "null"
+  if (typeof value === "boolean") return value.toString()
+  if (typeof value === "number") return formatNuonNumber(value)
+  if (typeof value === "string") {
+    const escaped = value
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/\t/g, "\\t")
+    return `"${escaped}"`
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]"
+    const items = value.map((v) => `${childPad}${writeNuon(v, indent + 1)}`).join("\n")
+    return `[\n${items}\n${pad}]`
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+    if (entries.length === 0) return "{}"
+    const lines = entries.map(([k, v]) => `${childPad}${k}: ${writeNuon(v, indent + 1)}`).join("\n")
+    return `{\n${lines}\n${pad}}`
+  }
+  return String(value)
 }

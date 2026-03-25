@@ -2,36 +2,93 @@ import { Elysia, t } from "elysia"
 import { readdir, readFile, writeFile, unlink, mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { existsSync } from "node:fs"
-import { paths, ensureDirs } from "../fs.ts"
+import { paths, ensureDirs, parseNuon, writeNuon } from "../fs.ts"
 import { generateId } from "../lib/id.ts"
+
+interface CollectionItem {
+  id: string
+  type: "snippet" | "doc" | "bookmark"
+}
+
+interface Collection {
+  id: string
+  name: string
+  desc: string
+  parent: string | null
+  items: CollectionItem[]
+  created: string
+  updated: string
+}
 
 const collectionsDir = paths.collections
 
-async function readCollections() {
+function isValidCollection(value: unknown): value is Collection {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v.id === "string" &&
+    typeof v.name === "string" &&
+    typeof v.desc === "string" &&
+    (v.parent === null || typeof v.parent === "string") &&
+    Array.isArray(v.items) &&
+    (v.items as unknown[]).every((item) => {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) return false
+      const i = item as Record<string, unknown>
+      return (
+        typeof i.id === "string" &&
+        (i.type === "snippet" || i.type === "doc" || i.type === "bookmark")
+      )
+    }) &&
+    typeof v.created === "string" &&
+    typeof v.updated === "string"
+  )
+}
+
+async function readCollections(): Promise<Collection[]> {
   await ensureDirs()
   if (!existsSync(collectionsDir)) return []
   const entries = await readdir(collectionsDir)
-  const results = []
+  const results: Collection[] = []
   for (const entry of entries) {
-    if (!entry.endsWith(".json")) continue
-    const content = await readFile(join(collectionsDir, entry), "utf-8")
-    results.push(JSON.parse(content))
+    if (!entry.endsWith(".nuon")) continue
+    const filePath = join(collectionsDir, entry)
+    try {
+      const content = await readFile(filePath, "utf-8")
+      const value = parseNuon(content)
+      if (!isValidCollection(value)) {
+        console.warn(`[collections] Skipping malformed collection file: ${entry} (invalid shape)`)
+        continue
+      }
+      results.push(value)
+    } catch (err) {
+      console.warn(`[collections] Skipping malformed collection file: ${entry} (${err instanceof Error ? err.message : err})`)
+    }
   }
   return results
 }
 
-async function readCollection(id: string) {
-  const filePath = join(collectionsDir, `${id}.json`)
+async function readCollection(id: string): Promise<Collection | null> {
+  const filePath = join(collectionsDir, `${id}.nuon`)
   if (!existsSync(filePath)) return null
-  const content = await readFile(filePath, "utf-8")
-  return JSON.parse(content)
+  try {
+    const content = await readFile(filePath, "utf-8")
+    const value = parseNuon(content)
+    if (!isValidCollection(value)) {
+      console.warn(`[collections] Malformed collection file: ${id}.nuon (invalid shape)`)
+      return null
+    }
+    return value
+  } catch (err) {
+    console.warn(`[collections] Failed to parse collection file: ${id}.nuon (${err instanceof Error ? err.message : err})`)
+    return null
+  }
 }
 
-async function writeCollection(data: Record<string, unknown>) {
+async function writeCollection(data: Collection): Promise<void> {
   await mkdir(collectionsDir, { recursive: true })
   await writeFile(
-    join(collectionsDir, `${data.id}.json`),
-    JSON.stringify(data, null, 2),
+    join(collectionsDir, `${data.id}.nuon`),
+    writeNuon(data),
     "utf-8",
   )
 }
@@ -97,7 +154,7 @@ export const collectionRoutes = new Elysia({ prefix: "/api/v1" })
     },
   )
   .delete("/collections/:id", async ({ params, set }) => {
-    const filePath = join(collectionsDir, `${params.id}.json`)
+    const filePath = join(collectionsDir, `${params.id}.nuon`)
     if (!existsSync(filePath)) {
       set.status = 404
       return { error: "Collection not found" }
@@ -135,7 +192,7 @@ export const collectionRoutes = new Elysia({ prefix: "/api/v1" })
       set.status = 404
       return { error: "Collection not found" }
     }
-    col.items = col.items.filter((item: any) => item.id !== params.itemId)
+    col.items = col.items.filter((item: CollectionItem) => item.id !== params.itemId)
     col.updated = new Date().toISOString()
     await writeCollection(col)
     return col

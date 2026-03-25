@@ -1,6 +1,7 @@
 import { defineStore } from "pinia"
 import { ref, computed } from "vue"
-import type { Doc } from "../lib/types"
+import type { Doc, CreateDoc } from "../lib/types"
+import { client, patchById } from "../lib/client"
 
 export const useDocsStore = defineStore("docs", () => {
   const items = ref<Doc[]>([])
@@ -55,12 +56,43 @@ export const useDocsStore = defineStore("docs", () => {
     isLoading.value = true
     error.value = null
     try {
-      const res = await fetch("http://localhost:7878/api/v1/docs")
-      items.value = await res.json()
+      const { data, error: fetchError } = await client.api.v1.docs.get()
+      if (fetchError) throw new Error(String(fetchError))
+      items.value = (data as Doc[]) ?? []
     } catch (e) {
       error.value = e instanceof Error ? e.message : "Failed to fetch"
     } finally {
       isLoading.value = false
+    }
+  }
+
+  const add = async (data: CreateDoc) => {
+    error.value = null
+    try {
+      const { error: addError } = await client.api.v1.docs.post({ body: data })
+      if (addError) {
+        error.value = String(addError)
+        return
+      }
+      await fetchAll()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "Failed to add document"
+    }
+  }
+
+  const toggleFav = async (id: string, fav: boolean) => {
+    error.value = null
+    try {
+      const { error: patchError } = await patchById(client.api.v1.docs, id, {
+        fav: !fav,
+      })
+      if (patchError) {
+        error.value = String(patchError)
+        return
+      }
+      await fetchAll()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "Failed to update favorite"
     }
   }
 
@@ -77,5 +109,7 @@ export const useDocsStore = defineStore("docs", () => {
     topics,
     filtered,
     fetchAll,
+    add,
+    toggleFav,
   }
 })
