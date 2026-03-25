@@ -197,7 +197,7 @@ export function parseNuon(input: string): unknown {
 
   function parseObject(): Record<string, unknown> {
     pos++
-    const obj: Record<string, unknown> = {}
+    const obj = Object.create(null) as Record<string, unknown>
     skip()
     while (pos < input.length && input[pos] !== "}") {
       skip()
@@ -210,6 +210,10 @@ export function parseNuon(input: string): unknown {
         const start = pos
         while (pos < input.length && /[\w-]/.test(input[pos]!)) pos++
         key = input.slice(start, pos)
+      }
+      if (key === "") throw new Error(`Empty key at position ${pos}`)
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
+        throw new Error(`Disallowed key in NUON object: "${key}"`)
       }
       skip()
       if (input[pos] !== ":") throw new Error(`Expected : after key "${key}"`)
@@ -295,13 +299,43 @@ export function parseNuon(input: string): unknown {
   return result
 }
 
+function formatNuonNumber(n: number): string {
+  if (!Number.isFinite(n)) {
+    throw new Error(`Cannot serialize non-finite number (${n}) in NUON`)
+  }
+  const str = n.toString()
+  if (!/[eE]/.test(str)) return str
+  // Expand scientific notation (e.g. "1e-7") into a plain decimal string.
+  // Number.prototype.toString() always produces exactly one exponent separator.
+  const parts = str.split(/[eE]/)
+  if (parts.length !== 2) throw new Error(`Unexpected number format: ${str}`)
+  const [mantissaPart, exponentPart] = parts as [string, string]
+  const exp = Number.parseInt(exponentPart, 10)
+  let sign = ""
+  let mantissa = mantissaPart
+  if (mantissa[0] === "-") {
+    sign = "-"
+    mantissa = mantissa.slice(1)
+  }
+  const [intPart, fracPart = ""] = mantissa.split(".")
+  const digits = intPart + fracPart
+  if (exp >= 0) {
+    const zerosToAdd = exp - fracPart.length
+    if (zerosToAdd >= 0) return sign + digits + "0".repeat(zerosToAdd)
+    const splitAt = intPart.length + exp
+    return sign + digits.slice(0, splitAt) + "." + digits.slice(splitAt)
+  }
+  const shift = -exp
+  return sign + "0." + "0".repeat(shift - 1) + digits
+}
+
 export function writeNuon(value: unknown, indent = 0): string {
   const pad = "  ".repeat(indent)
   const childPad = "  ".repeat(indent + 1)
 
   if (value === null) return "null"
   if (typeof value === "boolean") return value.toString()
-  if (typeof value === "number") return value.toString()
+  if (typeof value === "number") return formatNuonNumber(value)
   if (typeof value === "string") {
     const escaped = value
       .replace(/\\/g, "\\\\")

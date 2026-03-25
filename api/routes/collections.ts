@@ -31,6 +31,14 @@ function isValidCollection(value: unknown): value is Collection {
     typeof v.desc === "string" &&
     (v.parent === null || typeof v.parent === "string") &&
     Array.isArray(v.items) &&
+    (v.items as unknown[]).every((item) => {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) return false
+      const i = item as Record<string, unknown>
+      return (
+        typeof i.id === "string" &&
+        (i.type === "snippet" || i.type === "doc" || i.type === "bookmark")
+      )
+    }) &&
     typeof v.created === "string" &&
     typeof v.updated === "string"
   )
@@ -44,8 +52,8 @@ async function readCollections(): Promise<Collection[]> {
   for (const entry of entries) {
     if (!entry.endsWith(".nuon")) continue
     const filePath = join(collectionsDir, entry)
-    const content = await readFile(filePath, "utf-8")
     try {
+      const content = await readFile(filePath, "utf-8")
       const value = parseNuon(content)
       if (!isValidCollection(value)) {
         console.warn(`[collections] Skipping malformed collection file: ${entry} (invalid shape)`)
@@ -62,8 +70,8 @@ async function readCollections(): Promise<Collection[]> {
 async function readCollection(id: string): Promise<Collection | null> {
   const filePath = join(collectionsDir, `${id}.nuon`)
   if (!existsSync(filePath)) return null
-  const content = await readFile(filePath, "utf-8")
   try {
+    const content = await readFile(filePath, "utf-8")
     const value = parseNuon(content)
     if (!isValidCollection(value)) {
       console.warn(`[collections] Malformed collection file: ${id}.nuon (invalid shape)`)

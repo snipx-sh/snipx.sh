@@ -27,6 +27,14 @@ const snippetsStore = useSnippetsStore()
 const docsStore = useDocsStore()
 const bookmarksStore = useBookmarksStore()
 
+type EdenResult = { error?: unknown; status?: number; data?: unknown }
+
+function throwIfUnexpectedApiError(res: EdenResult): void {
+  if (res.error && res.status !== undefined && res.status !== 404) {
+    throw new Error(`API error ${res.status}: ${String(res.error)}`)
+  }
+}
+
 async function execute() {
   const cmd = input.value.trim()
   if (!cmd) return
@@ -96,27 +104,21 @@ async function execute() {
           output = `Navigating to snippets/${id}`
           break
         }
-        if (snipRes.status !== undefined && snipRes.status !== 404) {
-          throw new Error(`API error ${snipRes.status}: ${String(snipRes.error)}`)
-        }
+        throwIfUnexpectedApiError(snipRes)
         const docRes = await getById(client.api.v1.docs, id)
         if (!docRes.error) {
           emit("navigate", "docs", id)
           output = `Navigating to docs/${id}`
           break
         }
-        if (docRes.status !== undefined && docRes.status !== 404) {
-          throw new Error(`API error ${docRes.status}: ${String(docRes.error)}`)
-        }
+        throwIfUnexpectedApiError(docRes)
         const bmRes = await getById(client.api.v1.bookmarks, id)
         if (!bmRes.error) {
           emit("navigate", "bookmarks", id)
           output = `Navigating to bookmarks/${id}`
           break
         }
-        if (bmRes.status !== undefined && bmRes.status !== 404) {
-          throw new Error(`API error ${bmRes.status}: ${String(bmRes.error)}`)
-        }
+        throwIfUnexpectedApiError(bmRes)
         output = `Not found: ${id}`
         isError = true
         break
@@ -135,6 +137,7 @@ async function execute() {
           output = `Copied code from snippet "${snippet.title}"`
           break
         }
+        throwIfUnexpectedApiError(snipRes)
         const docRes = await getById(client.api.v1.docs, id)
         if (!docRes.error && docRes.data) {
           const doc = docRes.data as Doc
@@ -142,6 +145,7 @@ async function execute() {
           output = `Copied URL from "${doc.title}"`
           break
         }
+        throwIfUnexpectedApiError(docRes)
         const bmRes = await getById(client.api.v1.bookmarks, id)
         if (!bmRes.error && bmRes.data) {
           const bm = bmRes.data as Bookmark
@@ -149,6 +153,7 @@ async function execute() {
           output = `Copied URL from "${bm.title}"`
           break
         }
+        throwIfUnexpectedApiError(bmRes)
         output = `Not found: ${id}`
         isError = true
         break
@@ -164,23 +169,41 @@ async function execute() {
         if (!snipRes.error && snipRes.data) {
           const snippet = snipRes.data as Snippet
           await snippetsStore.toggleFav(id, snippet.fav)
-          output = `Toggled favorite for snippet "${snippet.title}"`
+          if (snippetsStore.error) {
+            output = `Failed to toggle favorite for snippet "${snippet.title}": ${snippetsStore.error}`
+            isError = true
+          } else {
+            output = `Toggled favorite for snippet "${snippet.title}"`
+          }
           break
         }
+        throwIfUnexpectedApiError(snipRes)
         const docRes = await getById(client.api.v1.docs, id)
         if (!docRes.error && docRes.data) {
           const doc = docRes.data as Doc
           await docsStore.toggleFav(id, doc.fav)
-          output = `Toggled favorite for doc "${doc.title}"`
+          if (docsStore.error) {
+            output = `Failed to toggle favorite for doc "${doc.title}": ${docsStore.error}`
+            isError = true
+          } else {
+            output = `Toggled favorite for doc "${doc.title}"`
+          }
           break
         }
+        throwIfUnexpectedApiError(docRes)
         const bmRes = await getById(client.api.v1.bookmarks, id)
         if (!bmRes.error && bmRes.data) {
           const bm = bmRes.data as Bookmark
           await bookmarksStore.toggleFav(id, bm.fav)
-          output = `Toggled favorite for bookmark "${bm.title}"`
+          if (bookmarksStore.error) {
+            output = `Failed to toggle favorite for bookmark "${bm.title}": ${bookmarksStore.error}`
+            isError = true
+          } else {
+            output = `Toggled favorite for bookmark "${bm.title}"`
+          }
           break
         }
+        throwIfUnexpectedApiError(bmRes)
         output = `Not found: ${id}`
         isError = true
         break
@@ -199,6 +222,7 @@ async function execute() {
           output = `Opened "${doc.title}" in browser`
           break
         }
+        throwIfUnexpectedApiError(docRes)
         const bmRes = await getById(client.api.v1.bookmarks, id)
         if (!bmRes.error && bmRes.data) {
           const bm = bmRes.data as Bookmark
@@ -206,6 +230,7 @@ async function execute() {
           output = `Opened "${bm.title}" in browser`
           break
         }
+        throwIfUnexpectedApiError(bmRes)
         output = `Not found or not a URL item: ${id}`
         isError = true
         break
