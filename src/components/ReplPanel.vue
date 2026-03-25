@@ -173,7 +173,7 @@ async function execute() {
         const bm = bookmarksStore.items.find((b: Bookmark) => b.id === id)
         const item = doc ?? bm
         if (item) {
-          window.open(item.url, "_blank")
+          window.open(item.url, "_blank", "noopener,noreferrer")
           output = `Opened "${item.title}" in browser`
         } else {
           output = `Not found or not a URL item: ${id}`
