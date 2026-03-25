@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed, onMounted } from "vue"
+import { ref, watch, computed, onMounted, onBeforeUnmount } from "vue"
 import { T } from "./lib/theme"
 import AppHeader from "./components/AppHeader.vue"
 import Sidebar from "./components/Sidebar.vue"
@@ -34,18 +34,22 @@ const showOutput = ref(false)
 const showAsk = ref(false)
 const layoutHeight = ref(window.innerHeight)
 
-window.addEventListener("resize", () => {
-  layoutHeight.value = window.innerHeight
-})
-
 const snippetsStore = useSnippetsStore()
 const docsStore = useDocsStore()
 const bookmarksStore = useBookmarksStore()
 const learnStore = useLearnStore()
 
-// Load lessons into learn store
+const onResize = () => {
+  layoutHeight.value = window.innerHeight
+}
+
 onMounted(() => {
   learnStore.chapters = chapters
+  window.addEventListener("resize", onResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", onResize)
 })
 
 const activeStore = computed(() => {

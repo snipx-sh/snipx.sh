@@ -51,13 +51,29 @@ export const useBookmarksStore = defineStore("bookmarks", () => {
   }
 
   const add = async (data: CreateBookmark) => {
-    await client.api.v1.bookmarks.post({ body: data })
-    await fetchAll()
+    error.value = null
+    try {
+      const { error: addError } = await client.api.v1.bookmarks.post({ body: data })
+      if (addError) {
+        throw new Error(String(addError))
+      }
+      await fetchAll()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "Failed to add bookmark"
+    }
   }
 
   const toggleFav = async (id: string, fav: boolean) => {
-    await patchById(client.api.v1.bookmarks, id, { fav: !fav })
-    await fetchAll()
+    error.value = null
+    try {
+      const { error: toggleError } = await patchById(client.api.v1.bookmarks, id, { fav: !fav })
+      if (toggleError) {
+        throw new Error(String(toggleError))
+      }
+      await fetchAll()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "Failed to toggle favorite"
+    }
   }
 
   return {

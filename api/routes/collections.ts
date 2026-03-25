@@ -22,6 +22,20 @@ interface Collection {
 
 const collectionsDir = paths.collections
 
+function isValidCollection(value: unknown): value is Collection {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v.id === "string" &&
+    typeof v.name === "string" &&
+    typeof v.desc === "string" &&
+    (v.parent === null || typeof v.parent === "string") &&
+    Array.isArray(v.items) &&
+    typeof v.created === "string" &&
+    typeof v.updated === "string"
+  )
+}
+
 async function readCollections(): Promise<Collection[]> {
   await ensureDirs()
   if (!existsSync(collectionsDir)) return []
@@ -29,12 +43,17 @@ async function readCollections(): Promise<Collection[]> {
   const results: Collection[] = []
   for (const entry of entries) {
     if (!entry.endsWith(".nuon")) continue
-    const content = await readFile(join(collectionsDir, entry), "utf-8")
+    const filePath = join(collectionsDir, entry)
+    const content = await readFile(filePath, "utf-8")
     try {
       const value = parseNuon(content)
-      results.push(value as Collection)
-    } catch {
-      // skip malformed files
+      if (!isValidCollection(value)) {
+        console.warn(`[collections] Skipping malformed collection file: ${entry} (invalid shape)`)
+        continue
+      }
+      results.push(value)
+    } catch (err) {
+      console.warn(`[collections] Skipping malformed collection file: ${entry} (${err instanceof Error ? err.message : err})`)
     }
   }
   return results
@@ -45,8 +64,14 @@ async function readCollection(id: string): Promise<Collection | null> {
   if (!existsSync(filePath)) return null
   const content = await readFile(filePath, "utf-8")
   try {
-    return parseNuon(content) as Collection
-  } catch {
+    const value = parseNuon(content)
+    if (!isValidCollection(value)) {
+      console.warn(`[collections] Malformed collection file: ${id}.nuon (invalid shape)`)
+      return null
+    }
+    return value
+  } catch (err) {
+    console.warn(`[collections] Failed to parse collection file: ${id}.nuon (${err instanceof Error ? err.message : err})`)
     return null
   }
 }

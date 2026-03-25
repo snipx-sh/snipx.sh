@@ -202,6 +202,7 @@ export function parseNuon(input: string): unknown {
     while (pos < input.length && input[pos] !== "}") {
       skip()
       if (input[pos] === "}") break
+      if (pos >= input.length) throw new Error("Unexpected end of input while parsing object: expected '}'")
       let key: string
       if (input[pos] === '"') {
         key = parseString()
@@ -219,7 +220,8 @@ export function parseNuon(input: string): unknown {
       if (input[pos] === ",") pos++
       skip()
     }
-    if (input[pos] === "}") pos++
+    if (pos >= input.length) throw new Error("Unexpected end of input while parsing object: expected '}'")
+    pos++
     return obj
   }
 
@@ -230,12 +232,14 @@ export function parseNuon(input: string): unknown {
     while (pos < input.length && input[pos] !== "]") {
       skip()
       if (input[pos] === "]") break
+      if (pos >= input.length) throw new Error("Unexpected end of input while parsing array: expected ']'")
       arr.push(parseValue())
       skip()
       if (input[pos] === ",") pos++
       skip()
     }
-    if (input[pos] === "]") pos++
+    if (pos >= input.length) throw new Error("Unexpected end of input while parsing array: expected ']'")
+    pos++
     return arr
   }
 
@@ -245,6 +249,7 @@ export function parseNuon(input: string): unknown {
     while (pos < input.length && input[pos] !== '"') {
       if (input[pos] === "\\") {
         pos++
+        if (pos >= input.length) throw new Error("Unexpected end of input: incomplete escape sequence in string")
         const esc = input[pos]!
         if (esc === "n") str += "\n"
         else if (esc === "t") str += "\t"
@@ -257,19 +262,37 @@ export function parseNuon(input: string): unknown {
       }
       pos++
     }
+    if (pos >= input.length) throw new Error("Unterminated string: expected closing '\"'")
     pos++
     return str
   }
 
   function parseNumber(): number {
     const start = pos
+    let hasDigit = false
+    let dotCount = 0
     if (input[pos] === "-") pos++
-    while (pos < input.length && /[\d.]/.test(input[pos]!)) pos++
-    return Number(input.slice(start, pos))
+    while (pos < input.length && /[\d.]/.test(input[pos]!)) {
+      const ch = input[pos]!
+      if (ch === ".") {
+        dotCount++
+        if (dotCount > 1) throw new Error(`Invalid number at position ${start}: multiple decimal points`)
+      } else {
+        hasDigit = true
+      }
+      pos++
+    }
+    if (!hasDigit) throw new Error(`Invalid number at position ${start}: no digits found`)
+    const num = Number(input.slice(start, pos))
+    if (Number.isNaN(num)) throw new Error(`Invalid number at position ${start}`)
+    return num
   }
 
   skip()
-  return parseValue()
+  const result = parseValue()
+  skip()
+  if (pos !== input.length) throw new Error(`Unexpected trailing characters in NUON input at position ${pos}`)
+  return result
 }
 
 export function writeNuon(value: unknown, indent = 0): string {

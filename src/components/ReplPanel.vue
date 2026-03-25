@@ -96,17 +96,26 @@ async function execute() {
           output = `Navigating to snippets/${id}`
           break
         }
+        if (snipRes.status !== undefined && snipRes.status !== 404) {
+          throw new Error(`API error ${snipRes.status}: ${String(snipRes.error)}`)
+        }
         const docRes = await getById(client.api.v1.docs, id)
         if (!docRes.error) {
           emit("navigate", "docs", id)
           output = `Navigating to docs/${id}`
           break
         }
+        if (docRes.status !== undefined && docRes.status !== 404) {
+          throw new Error(`API error ${docRes.status}: ${String(docRes.error)}`)
+        }
         const bmRes = await getById(client.api.v1.bookmarks, id)
         if (!bmRes.error) {
           emit("navigate", "bookmarks", id)
           output = `Navigating to bookmarks/${id}`
           break
+        }
+        if (bmRes.status !== undefined && bmRes.status !== 404) {
+          throw new Error(`API error ${bmRes.status}: ${String(bmRes.error)}`)
         }
         output = `Not found: ${id}`
         isError = true
@@ -119,22 +128,29 @@ async function execute() {
           isError = true
           break
         }
-        const snippet = snippetsStore.items.find((s: Snippet) => s.id === id)
-        if (snippet) {
+        const snipRes = await getById(client.api.v1.snippets, id)
+        if (!snipRes.error && snipRes.data) {
+          const snippet = snipRes.data as Snippet
           await navigator.clipboard.writeText(snippet.code)
           output = `Copied code from snippet "${snippet.title}"`
-        } else {
-          const doc = docsStore.items.find((d: Doc) => d.id === id)
-          const bm = bookmarksStore.items.find((b: Bookmark) => b.id === id)
-          const item = doc ?? bm
-          if (item) {
-            await navigator.clipboard.writeText(item.url)
-            output = `Copied URL from "${item.title}"`
-          } else {
-            output = `Not found: ${id}`
-            isError = true
-          }
+          break
         }
+        const docRes = await getById(client.api.v1.docs, id)
+        if (!docRes.error && docRes.data) {
+          const doc = docRes.data as Doc
+          await navigator.clipboard.writeText(doc.url)
+          output = `Copied URL from "${doc.title}"`
+          break
+        }
+        const bmRes = await getById(client.api.v1.bookmarks, id)
+        if (!bmRes.error && bmRes.data) {
+          const bm = bmRes.data as Bookmark
+          await navigator.clipboard.writeText(bm.url)
+          output = `Copied URL from "${bm.title}"`
+          break
+        }
+        output = `Not found: ${id}`
+        isError = true
         break
       }
       case "fav": {
@@ -144,22 +160,29 @@ async function execute() {
           isError = true
           break
         }
-        const snippet = snippetsStore.items.find((s: Snippet) => s.id === id)
-        const doc = docsStore.items.find((d: Doc) => d.id === id)
-        const bm = bookmarksStore.items.find((b: Bookmark) => b.id === id)
-        if (snippet) {
+        const snipRes = await getById(client.api.v1.snippets, id)
+        if (!snipRes.error && snipRes.data) {
+          const snippet = snipRes.data as Snippet
           await snippetsStore.toggleFav(id, snippet.fav)
           output = `Toggled favorite for snippet "${snippet.title}"`
-        } else if (doc) {
+          break
+        }
+        const docRes = await getById(client.api.v1.docs, id)
+        if (!docRes.error && docRes.data) {
+          const doc = docRes.data as Doc
           await docsStore.toggleFav(id, doc.fav)
           output = `Toggled favorite for doc "${doc.title}"`
-        } else if (bm) {
+          break
+        }
+        const bmRes = await getById(client.api.v1.bookmarks, id)
+        if (!bmRes.error && bmRes.data) {
+          const bm = bmRes.data as Bookmark
           await bookmarksStore.toggleFav(id, bm.fav)
           output = `Toggled favorite for bookmark "${bm.title}"`
-        } else {
-          output = `Not found: ${id}`
-          isError = true
+          break
         }
+        output = `Not found: ${id}`
+        isError = true
         break
       }
       case "open": {
@@ -169,16 +192,22 @@ async function execute() {
           isError = true
           break
         }
-        const doc = docsStore.items.find((d: Doc) => d.id === id)
-        const bm = bookmarksStore.items.find((b: Bookmark) => b.id === id)
-        const item = doc ?? bm
-        if (item) {
-          window.open(item.url, "_blank", "noopener,noreferrer")
-          output = `Opened "${item.title}" in browser`
-        } else {
-          output = `Not found or not a URL item: ${id}`
-          isError = true
+        const docRes = await getById(client.api.v1.docs, id)
+        if (!docRes.error && docRes.data) {
+          const doc = docRes.data as Doc
+          window.open(doc.url, "_blank", "noopener,noreferrer")
+          output = `Opened "${doc.title}" in browser`
+          break
         }
+        const bmRes = await getById(client.api.v1.bookmarks, id)
+        if (!bmRes.error && bmRes.data) {
+          const bm = bmRes.data as Bookmark
+          window.open(bm.url, "_blank", "noopener,noreferrer")
+          output = `Opened "${bm.title}" in browser`
+          break
+        }
+        output = `Not found or not a URL item: ${id}`
+        isError = true
         break
       }
       case "tags": {
