@@ -51,13 +51,29 @@ export const useSnippetsStore = defineStore("snippets", () => {
   }
 
   const add = async (data: CreateSnippet) => {
-    await client.api.v1.snippets.post({ body: data })
-    await fetchAll()
+    error.value = null
+    try {
+      const { error: addError } = await client.api.v1.snippets.post({ body: data })
+      if (addError) {
+        throw new Error(String(addError))
+      }
+      await fetchAll()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "Failed to add snippet"
+    }
   }
 
   const toggleFav = async (id: string, fav: boolean) => {
-    await patchById(client.api.v1.snippets, id, { fav: !fav })
-    await fetchAll()
+    error.value = null
+    try {
+      const { error: toggleError } = await patchById(client.api.v1.snippets, id, { fav: !fav })
+      if (toggleError) {
+        throw new Error(String(toggleError))
+      }
+      await fetchAll()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "Failed to toggle favorite"
+    }
   }
 
   return {
