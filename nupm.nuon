@@ -1,0 +1,7 @@
+{
+  name: "snipx"
+  type: "module"
+  version: "0.1.0"
+  description: "Local-first developer knowledge manager"
+  license: "MIT"
+}

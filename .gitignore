@@ -1,0 +1,8 @@
+node_modules/
+target/
+dist/
+*.db
+.env
+.dev.vars
+.DS_Store
+.scratch
