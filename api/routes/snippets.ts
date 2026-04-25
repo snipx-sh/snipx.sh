@@ -5,6 +5,7 @@ import { generateId } from "../lib/id.ts"
 const SAFE_SUBDIR_RE = /^[\w.+-]+$/
 
 function isSafeSubdir(s: string): boolean {
+  // The regex allows individual dots so ".." must be rejected explicitly.
   return SAFE_SUBDIR_RE.test(s) && !s.includes("..")
 }
 
@@ -100,8 +101,8 @@ export const snippetRoutes = new Elysia({ prefix: "/api/v1" })
       set.status = 404
       return { error: "Snippet not found" }
     }
-    const newLang = body.lang ?? (file.meta.lang as string)
-    if (!isSafeSubdir(newLang)) {
+    const newLang = body.lang ?? (file.meta.lang as unknown)
+    if (typeof newLang !== "string" || !isSafeSubdir(newLang)) {
       set.status = 400
       return { error: "Invalid lang value" }
     }

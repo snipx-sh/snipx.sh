@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' tauri: asset: https://asset.localhost; connect-src 'self' http://localhost:7878 http://127.0.0.1:7878; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' tauri: asset: data: blob: https:;"
+      "csp": "default-src 'self' tauri: asset: https://asset.localhost; connect-src 'self' http://localhost:7878 http://127.0.0.1:7878; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' tauri: asset: data: blob: https:;"
     }
   },
   "plugins": {}
