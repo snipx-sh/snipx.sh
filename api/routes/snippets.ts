@@ -101,7 +101,7 @@ export const snippetRoutes = new Elysia({ prefix: "/api/v1" })
       set.status = 404
       return { error: "Snippet not found" }
     }
-    const newLang = body.lang ?? (file.meta.lang as unknown)
+    const newLang = body.lang ?? file.meta.lang
     if (typeof newLang !== "string" || !isSafeSubdir(newLang)) {
       set.status = 400
       return { error: "Invalid lang value" }
