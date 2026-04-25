@@ -2,6 +2,12 @@ import { Elysia, t } from "elysia"
 import { readContentDir, writeContentFile, deleteContentFile, paths, ensureDirs } from "../fs.ts"
 import { generateId } from "../lib/id.ts"
 
+const SAFE_SUBDIR_RE = /^[\w.+-]+$/
+
+function isSafeSubdir(s: string): boolean {
+  return SAFE_SUBDIR_RE.test(s) && !s.includes("..")
+}
+
 export const snippetRoutes = new Elysia({ prefix: "/api/v1" })
   .get("/snippets", async ({ query }) => {
     await ensureDirs()
@@ -55,6 +61,10 @@ export const snippetRoutes = new Elysia({ prefix: "/api/v1" })
   })
   .post("/snippets", async ({ body, set }) => {
     await ensureDirs()
+    if (!isSafeSubdir(body.lang)) {
+      set.status = 400
+      return { error: "Invalid lang value" }
+    }
     const id = generateId()
     const now = new Date().toISOString()
     const meta = {
@@ -90,6 +100,11 @@ export const snippetRoutes = new Elysia({ prefix: "/api/v1" })
       set.status = 404
       return { error: "Snippet not found" }
     }
+    const newLang = body.lang ?? (file.meta.lang as string)
+    if (!isSafeSubdir(newLang)) {
+      set.status = 400
+      return { error: "Invalid lang value" }
+    }
     const updated = {
       ...file.meta,
       ...body,
@@ -97,7 +112,7 @@ export const snippetRoutes = new Elysia({ prefix: "/api/v1" })
     }
     const code = body.code ?? file.body.trim()
     await deleteContentFile(paths.snippets, params.id)
-    await writeContentFile(paths.snippets, params.id, updated, code, updated.lang as string)
+    await writeContentFile(paths.snippets, params.id, updated, code, newLang)
     return { ...updated, code }
   }, {
     body: t.Partial(t.Object({

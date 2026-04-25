@@ -7,6 +7,7 @@ import { collectionRoutes } from "./routes/collections.ts"
 import { searchRoutes } from "./routes/search.ts"
 import { tagRoutes } from "./routes/tags.ts"
 import { syncRoutes } from "./routes/sync.ts"
+import { seed } from "./seed.ts"
 
 const app = new Elysia()
   .use(
@@ -39,5 +40,9 @@ const app = new Elysia()
   })
 
 console.log("snipx API running on http://127.0.0.1:7878")
+
+if (process.env.SNIPX_SEED === "1") {
+  await seed()
+}
 
 export type App = typeof app

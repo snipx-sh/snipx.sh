@@ -131,13 +131,13 @@ def "main add-comments" [
   let cfg = (resolve_config --model=$model --claude=$claude)
 
   let pattern = ($include | default "**/*.{ts,tsx,rs,nu}")
-  let files = (glob $pattern | where { |f|
+  mut files = (glob $pattern | where { |f|
     let size = ($f | path expand | open --raw | str length)
     $size < 50
   })
 
   if ($exclude != null) {
-    let files = ($files | where { |f|
+    $files = ($files | where { |f|
       not ($f | str contains $exclude)
     })
   }

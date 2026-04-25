@@ -31,12 +31,14 @@ export function parseFrontmatter(content: string): {
 
   const yamlStr = match[1] ?? ""
   const body = match[2] ?? ""
-  const meta: Record<string, unknown> = {}
+  const meta = Object.create(null) as Record<string, unknown>
+  const DISALLOWED_KEYS = new Set(["__proto__", "constructor", "prototype"])
 
   for (const line of yamlStr.split("\n")) {
     const colonIdx = line.indexOf(":")
     if (colonIdx === -1) continue
     const key = line.slice(0, colonIdx).trim()
+    if (!key || DISALLOWED_KEYS.has(key)) continue
     let value: unknown = line.slice(colonIdx + 1).trim()
 
     if (typeof value === "string" && value.startsWith("[") && value.endsWith("]")) {

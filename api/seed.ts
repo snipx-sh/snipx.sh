@@ -154,4 +154,8 @@ async function seed() {
   console.log("Seeded 30 items to ~/.snipx/")
 }
 
-seed()
+export { seed }
+
+if (import.meta.main) {
+  seed()
+}
